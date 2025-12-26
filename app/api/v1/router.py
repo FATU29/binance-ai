@@ -1,0 +1,15 @@
+"""API v1 router."""
+
+from fastapi import APIRouter
+
+from app.api.v1.endpoints import ai_analytics, health, news, sentiment
+
+api_router = APIRouter()
+
+# Include all endpoint routers
+api_router.include_router(health.router, prefix="/health", tags=["Health"])
+api_router.include_router(news.router, prefix="/news", tags=["News Articles"])
+api_router.include_router(sentiment.router, prefix="/sentiment", tags=["Sentiment Analysis"])
+api_router.include_router(
+    ai_analytics.router, prefix="/ai", tags=["AI Analytics (OpenAI)"]
+)
