@@ -4,15 +4,35 @@ __pycache__/
 *$py.class
 *.so
 .Python
-*.egg-info/
-dist/
-build/
-
-# Virtual Environment
-.venv/
+env/
 venv/
 ENV/
-env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Models
+models/
+*.pt
+*.pth
+*.bin
+*.onnx
+
+# Environment
+.env
+.env.local
 
 # IDE
 .vscode/
@@ -21,35 +41,10 @@ env/
 *.swo
 *~
 
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Alembic
-alembic/versions/*.py
-!alembic/versions/.gitkeep
-
 # Logs
 *.log
 logs/
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-
-# macOS
+# OS
 .DS_Store
-
-# Ruff
-.ruff_cache/
-
-# MyPy
-.mypy_cache/
+Thumbs.db

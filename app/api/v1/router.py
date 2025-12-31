@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import ai_analytics, health, news, sentiment
+from app.api.v1.endpoints import ai_analytics, causal_analysis, health, news, sentiment
 
 api_router = APIRouter()
 
@@ -12,4 +12,7 @@ api_router.include_router(news.router, prefix="/news", tags=["News Articles"])
 api_router.include_router(sentiment.router, prefix="/sentiment", tags=["Sentiment Analysis"])
 api_router.include_router(
     ai_analytics.router, prefix="/ai", tags=["AI Analytics (OpenAI)"]
+)
+api_router.include_router(
+    causal_analysis.router, prefix="/causal", tags=["Causal Analysis"]
 )

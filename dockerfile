@@ -12,7 +12,8 @@ COPY pyproject.toml uv.lock README.md ./
 COPY main.py ./
 COPY app ./app
 
-# Install dependencies
+# Install dependencies with increased timeout
+ENV UV_HTTP_TIMEOUT=120
 RUN uv sync --frozen --no-cache
 
 # Create a non-root user
