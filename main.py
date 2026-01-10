@@ -12,6 +12,9 @@ import uvicorn
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response
 from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
@@ -80,14 +83,32 @@ app = FastAPI(
 )
 
 
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
-    allow_methods=settings.CORS_ALLOW_METHODS,
-    allow_headers=settings.CORS_ALLOW_HEADERS,
-)
+# Custom CORS middleware that skips adding CORS headers when request comes from Gateway
+# This prevents duplicate CORS headers (Gateway already adds them)
+class ConditionalCORSMiddleware(BaseHTTPMiddleware):
+    """
+    Only add CORS headers if the request does NOT come from the Gateway.
+    Gateway adds X-Gateway-Validated header to indicate it has already handled CORS.
+    """
+    async def dispatch(self, request: StarletteRequest, call_next) -> Response:
+        # Check if request comes from Gateway (has X-Gateway-Validated header)
+        is_from_gateway = request.headers.get("X-Gateway-Validated") == "true"
+        
+        response = await call_next(request)
+        
+        # Only add CORS headers if NOT from gateway (e.g., direct access for health checks)
+        if not is_from_gateway:
+            origin = request.headers.get("origin")
+            if origin and origin in settings.CORS_ORIGINS:
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+                response.headers["Access-Control-Allow-Methods"] = "*"
+                response.headers["Access-Control-Allow-Headers"] = "*"
+        
+        return response
+
+# Use conditional CORS middleware instead of default CORSMiddleware
+app.add_middleware(ConditionalCORSMiddleware)
 
 
 # Custom exception handlers

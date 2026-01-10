@@ -193,12 +193,13 @@ class CausalAnalysisService:
         
         # Create a simple article-like object for AI analysis
         class SimpleArticle:
-            def __init__(self, title: str, content: str):
+            def __init__(self, title: str, content: str, published_at: datetime):
                 self.title = title
                 self.content = content
+                self.published_at = published_at
                 self.id = 0
         
-        article = SimpleArticle(title, content)
+        article = SimpleArticle(title, content, published_at)
         
         # Perform AI causal analysis
         if self.client and settings.OPENAI_API_KEY:
