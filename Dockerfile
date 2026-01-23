@@ -1,28 +1,33 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
+# Install uv and curl for health checks
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Set working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Copy all necessary files for building
+COPY pyproject.toml uv.lock README.md ./
+COPY main.py ./
+COPY app ./app
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Install dependencies with increased timeout
+ENV UV_HTTP_TIMEOUT=120
+RUN uv sync --frozen --no-cache
 
-# Copy application code
-COPY . .
+# Create a non-root user
+RUN useradd -m -u 1001 fastapi && chown -R fastapi:fastapi /app
 
-# Expose port
+# Switch to non-root user
+USER fastapi
+
+# Expose the application port
 EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
 # Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-
+CMD ["/app/.venv/bin/python", "main.py"]
