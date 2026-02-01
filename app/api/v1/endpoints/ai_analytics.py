@@ -1,18 +1,27 @@
 """Advanced sentiment analysis endpoints with OpenAI integration."""
 
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.dependencies import DBSession
 from app.schemas.news import NewsArticleResponse
+from app.schemas.price_prediction import (
+    LongPollingPredictionRequest,
+    LongPollingPredictionResponse,
+    PricePredictionRequest,
+    PricePredictionResponse,
+)
 from app.schemas.sentiment import (
     SentimentAnalysisCreate,
     SentimentAnalysisRequest,
     SentimentAnalysisResponse,
     SentimentAnalysisResult,
 )
+from app.services.long_polling_service import long_polling_service
 from app.services.news import news_article
+from app.services.price_prediction_service import price_prediction_service
 from app.services.sentiment import sentiment_analysis
 from app.services.sentiment_service import sentiment_service
 
@@ -163,3 +172,119 @@ async def quick_sentiment_analysis(
         return await sentiment_service._analyze_with_keywords(request)
 
     return await sentiment_service.analyze_text(request)
+
+
+@router.post("/predict-price", response_model=PricePredictionResponse)
+async def predict_price_from_news(
+    request: PricePredictionRequest,
+) -> PricePredictionResponse:
+    """
+    Predict cryptocurrency price movement based on latest news sentiment.
+    
+    This endpoint:
+    1. Fetches the latest news articles for the specified symbol from crawler service
+    2. Analyzes the overall sentiment using OpenAI
+    3. Predicts likely price movement (bullish/bearish/neutral)
+    4. Returns detailed reasoning and key factors
+    
+    - **symbol**: Trading pair symbol (e.g., BTCUSDT, ETHUSDT)
+    - **limit**: Number of recent articles to analyze (default: 10, max: 50)
+    - **include_historical_price**: Whether to include historical price data (not yet implemented)
+    
+    Example request:
+    ```json
+    {
+        "symbol": "BTCUSDT",
+        "limit": 10
+    }
+    ```
+    
+    Note: This uses OpenAI's advanced analysis to provide comprehensive price predictions.
+    Model version and settings are controlled server-side for security and cost management.
+    """
+    try:
+        # Get prediction from service
+        prediction, news_articles = await price_prediction_service.predict_price(request)
+        
+        return PricePredictionResponse(
+            success=True,
+            prediction=prediction,
+            news_articles=news_articles,
+            historical_price=None,  # TODO: Implement if chart service integration needed
+        )
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to predict price: {str(e)}",
+        )
+
+
+@router.post("/predict-price-poll", response_model=LongPollingPredictionResponse)
+async def predict_price_long_polling(
+    request: LongPollingPredictionRequest,
+    db: DBSession,
+) -> LongPollingPredictionResponse:
+    """
+    Long-polling endpoint for AI price predictions (VIP only).
+    
+    This endpoint implements long-polling to efficiently retrieve price predictions:
+    1. Checks database for existing predictions (cache)
+    2. Returns cached prediction if available and recent (< 5 minutes old)
+    3. Generates new prediction using OpenAI if cache is stale or missing
+    4. Waits for new predictions if client already has latest data
+    5. Returns after timeout or when new data is available
+    
+    **Benefits:**
+    - Reduces OpenAI API calls by caching predictions (5 minute cache)
+    - Efficient polling mechanism (checks every 5 seconds)
+    - Saves costs by reusing recent predictions
+    
+    **Parameters:**
+    - **symbol**: Trading pair symbol (e.g., BTCUSDT, ETHUSDT)
+    - **last_prediction_time**: Timestamp of last prediction received by client (optional)
+    - **timeout**: Max wait time for new data (30-120 seconds, default: 90)
+    
+    **Response:**
+    - **has_new_data**: True if new prediction is available
+    - **prediction**: Prediction data (if available)
+    - **cache_hit**: True if prediction was from cache
+    - **next_poll_after**: Recommended seconds to wait before next poll
+    
+    **Example request:**
+    ```json
+    {
+        "symbol": "BTCUSDT",
+        "last_prediction_time": "2024-01-15T10:30:00Z",
+        "timeout": 90
+    }
+    ```
+    
+    **Usage notes:**
+    - First request: Omit `last_prediction_time` to get latest prediction
+    - Subsequent requests: Include `last_prediction_time` from previous response
+    - Respect `next_poll_after` to avoid unnecessary requests
+    - This endpoint requires VIP account (enforced by Gateway)
+    
+    **Token optimization:**
+    Predictions are cached for 5 minutes, meaning maximum 12 OpenAI API calls per hour per symbol.
+    """
+    try:
+        result = await long_polling_service.poll_for_prediction(db, request)
+        return result
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to poll for prediction: {str(e)}",
+        )

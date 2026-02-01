@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import ai_analytics, causal_analysis, health, html_parser, news, sentiment
+from app.api.v1.endpoints import ai_analytics, causal_analysis, chat, health, html_parser, news, sentiment
 
 api_router = APIRouter()
 
@@ -18,4 +18,7 @@ api_router.include_router(
 )
 api_router.include_router(
     html_parser.router, prefix="/ai", tags=["AI HTML Parser"]
+)
+api_router.include_router(
+    chat.router, prefix="/ai", tags=["AI Chatbox (VIP Only)"]
 )

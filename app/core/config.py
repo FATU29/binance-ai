@@ -29,12 +29,9 @@ class Settings(BaseSettings):
 
     # CORS
     CORS_ORIGINS: list[str] = Field(
-        default=[
-            "http://localhost:3000",
-            "http://localhost:8000",
-        ]
+        default=["*"]
     )
-    CORS_ALLOW_CREDENTIALS: bool = True
+    CORS_ALLOW_CREDENTIALS: bool = False
     CORS_ALLOW_METHODS: list[str] = Field(default=["*"])
     CORS_ALLOW_HEADERS: list[str] = Field(default=["*"])
 
@@ -87,6 +84,16 @@ class Settings(BaseSettings):
     # External APIs
     NEWS_API_KEY: str | None = None
     OPENAI_API_KEY: str | None = None
+    
+    # External Service URLs
+    CRAWLER_SERVICE_URL: str = Field(
+        default="http://localhost:9002",
+        description="URL of the crawler/news service"
+    )
+    CHART_SERVICE_URL: str = Field(
+        default="http://localhost:3001",
+        description="URL of the chart service"
+    )
     
     # AI Configuration (server-side only, never expose to clients)
     OPENAI_MODEL: str = Field(

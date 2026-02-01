@@ -2,7 +2,6 @@
 name = "ai"
 version = "0.1.0"
 description = "AI Service for Crypto Trading Analysis - REST API for analyzing financial news and sentiment"
-readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     # Web Framework

@@ -99,9 +99,10 @@ class ConditionalCORSMiddleware(BaseHTTPMiddleware):
         # Only add CORS headers if NOT from gateway (e.g., direct access for health checks)
         if not is_from_gateway:
             origin = request.headers.get("origin")
-            if origin and origin in settings.CORS_ORIGINS:
-                response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Access-Control-Allow-Credentials"] = "true"
+            # Allow all origins with wildcard
+            if "*" in settings.CORS_ORIGINS or (origin and origin in settings.CORS_ORIGINS):
+                response.headers["Access-Control-Allow-Origin"] = "*"
+                response.headers["Access-Control-Allow-Credentials"] = "false"
                 response.headers["Access-Control-Allow-Methods"] = "*"
                 response.headers["Access-Control-Allow-Headers"] = "*"
         
