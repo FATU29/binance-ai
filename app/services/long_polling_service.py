@@ -21,7 +21,7 @@ CACHE_REFRESH_INTERVAL_SECONDS = 300  # 5 minutes
 
 
 class LongPollingPredictionService:
-    """Service for handling price predictions — database-first, no long-polling."""
+    """Service for handling price predictions — database-first with auto-generate."""
 
     async def poll_for_prediction(
         self,
@@ -29,21 +29,15 @@ class LongPollingPredictionService:
         request: LongPollingPredictionRequest,
     ) -> LongPollingPredictionResponse:
         """
-        Return the latest prediction from the database immediately.
-        
-        This is a fast, database-only lookup:
-        1. Query the latest prediction for the symbol from DB
-        2. If one exists and is recent enough → return it (cache hit)
-        3. If none exists or cache expired → return what we have and signal next_poll_after
-        
-        No OpenAI calls are made inline — predictions are generated
-        by a background task or a separate trigger endpoint.
+        Return the latest prediction from the database.
+        If no prediction exists or cache is stale, generate a new one via OpenAI,
+        save it to the DB, then return it.
         """
         symbol = request.symbol.upper()
         last_prediction_time = request.last_prediction_time
 
         logger.info(
-            "Prediction request (DB-only)",
+            "Prediction poll request",
             symbol=symbol,
             last_prediction_time=last_prediction_time,
         )
@@ -51,17 +45,62 @@ class LongPollingPredictionService:
         # Fast DB lookup
         latest_prediction = await price_prediction_crud.get_latest_by_symbol(db, symbol)
 
-        # No prediction exists at all
+        # Check if we need to generate a new prediction
+        need_new_prediction = False
         if latest_prediction is None:
-            logger.info("No prediction found in DB", symbol=symbol)
-            return LongPollingPredictionResponse(
-                success=True,
-                has_new_data=False,
-                prediction=None,
-                cache_hit=False,
-                next_poll_after=10,
-            )
+            need_new_prediction = True
+            logger.info("No prediction in DB, will generate", symbol=symbol)
+        else:
+            time_since_last = (
+                datetime.now(timezone.utc) - latest_prediction.created_at
+            ).total_seconds()
+            if time_since_last > CACHE_REFRESH_INTERVAL_SECONDS:
+                need_new_prediction = True
+                logger.info(
+                    "Prediction cache expired, will regenerate",
+                    symbol=symbol,
+                    age_seconds=int(time_since_last),
+                )
 
+        # Generate new prediction if needed
+        if need_new_prediction:
+            try:
+                predict_request = PricePredictionRequest(
+                    symbol=symbol,
+                    limit=request.news_limit if hasattr(request, "news_limit") else 10,
+                )
+                prediction_result, _news = await price_prediction_service.predict_price(
+                    predict_request
+                )
+                # Save to DB
+                latest_prediction = (
+                    await price_prediction_crud.create_from_prediction_result(
+                        db, prediction_result
+                    )
+                )
+                await db.commit()
+                logger.info(
+                    "New prediction generated and saved",
+                    symbol=symbol,
+                    prediction=prediction_result.prediction,
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to generate prediction, returning cached if available",
+                    symbol=symbol,
+                    error=str(e),
+                )
+                # If we have a stale prediction, still return it
+                if latest_prediction is None:
+                    return LongPollingPredictionResponse(
+                        success=False,
+                        has_new_data=False,
+                        prediction=None,
+                        cache_hit=False,
+                        next_poll_after=10,
+                    )
+
+        # At this point latest_prediction should exist
         prediction_result = price_prediction_crud.to_prediction_result(latest_prediction)
         time_since_last = (
             datetime.now(timezone.utc) - latest_prediction.created_at
@@ -85,16 +124,17 @@ class LongPollingPredictionService:
 
         # Return the prediction (new data for client)
         logger.info(
-            "Returning prediction from DB",
+            "Returning prediction",
             symbol=symbol,
             prediction=latest_prediction.prediction,
             age_seconds=int(time_since_last),
+            was_generated=need_new_prediction,
         )
         return LongPollingPredictionResponse(
             success=True,
             has_new_data=True,
             prediction=prediction_result,
-            cache_hit=True,
+            cache_hit=not need_new_prediction,
             next_poll_after=next_poll,
         )
 

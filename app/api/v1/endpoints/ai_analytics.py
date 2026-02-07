@@ -24,6 +24,7 @@ from app.schemas.sentiment import (
 from app.services.long_polling_service import long_polling_service
 from app.services.news import news_article
 from app.services.prediction_line_service import prediction_line_service
+from app.services.price_prediction_crud import price_prediction_crud
 from app.services.price_prediction_service import price_prediction_service
 from app.services.sentiment import sentiment_analysis
 from app.services.sentiment_service import sentiment_service
@@ -180,6 +181,7 @@ async def quick_sentiment_analysis(
 @router.post("/predict-price", response_model=PricePredictionResponse)
 async def predict_price_from_news(
     request: PricePredictionRequest,
+    db: DBSession,
 ) -> PricePredictionResponse:
     """
     Predict cryptocurrency price movement based on latest news sentiment.
@@ -188,7 +190,8 @@ async def predict_price_from_news(
     1. Fetches the latest news articles for the specified symbol from crawler service
     2. Analyzes the overall sentiment using OpenAI
     3. Predicts likely price movement (bullish/bearish/neutral)
-    4. Returns detailed reasoning and key factors
+    4. Saves the result to the database for caching
+    5. Returns detailed reasoning and key factors
     
     - **symbol**: Trading pair symbol (e.g., BTCUSDT, ETHUSDT)
     - **limit**: Number of recent articles to analyze (default: 10, max: 50)
@@ -208,6 +211,17 @@ async def predict_price_from_news(
     try:
         # Get prediction from service
         prediction, news_articles = await price_prediction_service.predict_price(request)
+        
+        # Save prediction to DB for caching (used by predict-price-poll)
+        try:
+            await price_prediction_crud.create_from_prediction_result(db, prediction)
+            await db.commit()
+        except Exception as save_err:
+            import structlog
+            structlog.get_logger().warning(
+                "Failed to save prediction to DB (non-fatal)",
+                error=str(save_err),
+            )
         
         return PricePredictionResponse(
             success=True,
