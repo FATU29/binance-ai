@@ -21,6 +21,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.exceptions import AppException
 from app.db.session import async_engine
+from app.db.models import Base  # noqa: F401 – import so all models are registered
 
 # Configure structured logging
 logger = structlog.get_logger()
@@ -36,15 +37,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
     logger.info("Starting up AI Service API", version=settings.APP_VERSION)
 
+    # Auto-create all tables that don't exist yet (safe for production – uses IF NOT EXISTS)
+    async with async_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables verified / created")
+
     # Initialize database connection pool
     # The engine is already created in app.db.session
     logger.info("Database connection pool initialized")
-
-    # You can add more startup tasks here:
-    # - Load ML models
-    # - Initialize Redis connection
-    # - Start background tasks
-    # - Pre-populate cache
 
     yield
 

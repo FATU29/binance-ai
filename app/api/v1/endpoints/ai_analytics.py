@@ -10,6 +10,8 @@ from app.schemas.news import NewsArticleResponse
 from app.schemas.price_prediction import (
     LongPollingPredictionRequest,
     LongPollingPredictionResponse,
+    PredictionLineRequest,
+    PredictionLineResponse,
     PricePredictionRequest,
     PricePredictionResponse,
 )
@@ -21,6 +23,7 @@ from app.schemas.sentiment import (
 )
 from app.services.long_polling_service import long_polling_service
 from app.services.news import news_article
+from app.services.prediction_line_service import prediction_line_service
 from app.services.price_prediction_service import price_prediction_service
 from app.services.sentiment import sentiment_analysis
 from app.services.sentiment_service import sentiment_service
@@ -287,4 +290,54 @@ async def predict_price_long_polling(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to poll for prediction: {str(e)}",
+        )
+
+
+@router.post("/prediction-line", response_model=PredictionLineResponse)
+async def generate_prediction_line(
+    request: PredictionLineRequest,
+) -> PredictionLineResponse:
+    """
+    Generate an AI price prediction line for chart overlay (VIP only).
+    
+    This endpoint:
+    1. Fetches recent price data from Binance
+    2. Fetches the latest news articles for the symbol
+    3. Uses OpenAI to predict future candle close prices
+    4. Returns an array of (time, value) points to draw on the chart
+    
+    The prediction line starts from the current candle and extends
+    into the future by the specified number of periods.
+    
+    **Parameters:**
+    - **symbol**: Trading pair (e.g., BTCUSDT)
+    - **interval**: Chart timeframe (1m, 5m, 15m, 1h, 4h, 1d, 1w)
+    - **periods**: Number of future candles to predict (4–100, default 24)
+    - **news_limit**: Number of news articles to analyze (1–50, default 10)
+    
+    **Example request:**
+    ```json
+    {
+        "symbol": "BTCUSDT",
+        "interval": "1h",
+        "periods": 24,
+        "news_limit": 10
+    }
+    ```
+    
+    **Note:** This endpoint requires a VIP account (enforced by Gateway).
+    """
+    try:
+        result = await prediction_line_service.generate_prediction_line(request)
+        return result
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate prediction line: {str(e)}",
         )
